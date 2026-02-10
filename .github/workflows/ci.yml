@@ -36,7 +36,6 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:coverage
-
       - name: Update coverage
         run: |
           coverage=$(jq '.total.lines.pct' coverage/coverage-summary.json)
@@ -57,7 +56,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-  run: |
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
