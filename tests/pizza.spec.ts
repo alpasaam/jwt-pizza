@@ -276,3 +276,37 @@ async function basicInit(page: Page) {
     await expect(page.getByText(/How have you lived this long without having a pizza/)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Buy one' })).toBeVisible();
   });
+
+  test('delivery verify JWT', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('button', { name: 'Order now' }).click();
+    await page.getByRole('combobox').selectOption('4');
+    await page.getByRole('link', { name: 'Image Description Veggie A' }).click();
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByPlaceholder('Email address').fill('d@jwt.com');
+    await page.getByPlaceholder('Password').fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await page.getByRole('button', { name: 'Pay now' }).click();
+    await page.route('**/api/order/verify', async (route) => {
+      await route.fulfill({
+        json: { message: 'valid', payload: { orderId: '23', items: 1 } },
+      });
+    });
+    await page.getByRole('button', { name: 'Verify' }).click();
+    await expect(page.getByRole('heading', { name: /JWT Pizza - valid/ })).toBeVisible();
+  });
+
+  test('delivery order more', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('button', { name: 'Order now' }).click();
+    await page.getByRole('combobox').selectOption('4');
+    await page.getByRole('link', { name: 'Image Description Veggie A' }).click();
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByPlaceholder('Email address').fill('d@jwt.com');
+    await page.getByPlaceholder('Password').fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await page.getByRole('button', { name: 'Pay now' }).click();
+    await expect(page.getByRole('heading', { name: 'Here is your JWT Pizza!' })).toBeVisible();
+    await page.getByRole('button', { name: 'Order more' }).click();
+    await expect(page.getByRole('heading', { name: 'Awesome is a click away' })).toBeVisible();
+  });
