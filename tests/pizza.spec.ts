@@ -310,3 +310,46 @@ async function basicInit(page: Page) {
     await page.getByRole('button', { name: 'Order more' }).click();
     await expect(page.getByRole('heading', { name: 'Awesome is a click away' })).toBeVisible();
   });
+
+  test('payment error', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('button', { name: 'Order now' }).click();
+    await page.getByRole('combobox').selectOption('4');
+    await page.getByRole('link', { name: 'Image Description Veggie A' }).click();
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByPlaceholder('Email address').fill('d@jwt.com');
+    await page.getByPlaceholder('Password').fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await page.unroute('*/**/api/order');
+    await page.route('*/**/api/order', async (route) => {
+      await route.fulfill({ status: 500, json: { message: 'Payment failed' } });
+    });
+    await page.getByRole('button', { name: 'Pay now' }).click();
+    await expect(page.getByText('Payment failed')).toBeVisible();
+  });
+
+  test('payment cancel', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('button', { name: 'Order now' }).click();
+    await page.getByRole('combobox').selectOption('4');
+    await page.getByRole('link', { name: 'Image Description Veggie A' }).click();
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByPlaceholder('Email address').fill('d@jwt.com');
+    await page.getByPlaceholder('Password').fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByRole('heading', { name: 'So worth it' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'Awesome is a click away' })).toBeVisible();
+  });
+
+  test('payment single pizza message', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('button', { name: 'Order now' }).click();
+    await page.getByRole('combobox').selectOption('4');
+    await page.getByRole('link', { name: 'Image Description Veggie A' }).click();
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByPlaceholder('Email address').fill('d@jwt.com');
+    await page.getByPlaceholder('Password').fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByText('Send me that pizza right now!')).toBeVisible();
+  });
