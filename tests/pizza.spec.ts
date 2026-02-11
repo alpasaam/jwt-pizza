@@ -133,3 +133,146 @@ async function basicInit(page: Page) {
     // Check balance
     await expect(page.getByText('0.008')).toBeVisible();
   });
+
+  test('about page', async ({ page }) => {
+    await page.goto('/about');
+    await expect(page.getByRole('heading', { name: 'The secret sauce' })).toBeVisible();
+    await expect(page.getByText(/secret behind our delicious pizzas/)).toBeVisible();
+  });
+
+  test('history page', async ({ page }) => {
+    await page.goto('/history');
+    await expect(page.getByRole('heading', { name: 'Mama Rucci, my my' })).toBeVisible();
+    await expect(page.getByText("Mama Ricci's kitchen")).toBeVisible();
+  });
+
+  test('not found page', async ({ page }) => {
+    await page.goto('/this-page-does-not-exist');
+    await expect(page.getByRole('heading', { name: 'Oops' })).toBeVisible();
+    await expect(page.getByText('dropped a pizza on the floor')).toBeVisible();
+  });
+
+  test('docs page', async ({ page }) => {
+    await page.route('**/api/docs', async (route) => {
+      await route.fulfill({
+        json: {
+          endpoints: [
+            {
+              requiresAuth: false,
+              method: 'GET',
+              path: '/api/order/menu',
+              description: 'Get menu',
+              example: 'GET /api/order/menu',
+              response: { items: [] },
+            },
+          ],
+        },
+      });
+    });
+    await page.goto('/docs');
+    await expect(page.getByRole('heading', { name: 'JWT Pizza API' })).toBeVisible();
+  });
+
+  test('register', async ({ page }) => {
+    const newUser = { id: '10', name: 'Jane Doe', email: 'jane@jwt.com', roles: [{ role: Role.Diner }] };
+    await page.route('*/**/api/auth', async (route) => {
+      if (route.request().method() === 'POST') {
+        const body = route.request().postDataJSON();
+        await route.fulfill({ json: { user: { ...newUser, name: body.name }, token: 'xyz123' } });
+      }
+    });
+    await page.route('*/**/api/user/me', async (route) => {
+      await route.fulfill({ json: newUser });
+    });
+    await page.goto('/register');
+    await page.getByPlaceholder('Full name').fill('Jane Doe');
+    await page.getByPlaceholder('Email address').fill('jane@jwt.com');
+    await page.getByPlaceholder('Password').fill('secret');
+    await page.getByRole('button', { name: 'Register' }).click();
+    await expect(page.getByRole('link', { name: 'JD' })).toBeVisible();
+  });
+
+  test('logout', async ({ page }) => {
+    await basicInit(page);
+    await page.getByRole('link', { name: 'Login' }).click();
+    await page.getByRole('textbox', { name: 'Email address' }).fill('d@jwt.com');
+    await page.getByRole('textbox', { name: 'Password' }).fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByRole('link', { name: 'KC' })).toBeVisible();
+    await page.unroute('*/**/api/auth');
+    await page.route('*/**/api/auth', async (route) => {
+      if (route.request().method() === 'DELETE') {
+        await route.fulfill({ status: 200, json: {} });
+      } else {
+        const user = { id: '3', name: 'Kai Chen', email: 'd@jwt.com', password: 'a', roles: [{ role: Role.Diner }] };
+        await route.fulfill({ json: { user, token: 'abcdef' } });
+      }
+    });
+    await page.goto('/logout');
+    await expect(page.getByRole('link', { name: 'Login' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: "The web's best pizza" })).toBeVisible();
+  });
+
+  test('diner dashboard with orders', async ({ page }) => {
+    await basicInit(page);
+    await page.unroute('*/**/api/order');
+    await page.route('*/**/api/order', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({
+          json: {
+            orders: [
+              {
+                id: '23',
+                franchiseId: '3',
+                storeId: '7',
+                date: '2024-01-15T12:00:00',
+                items: [
+                  { menuId: '1', description: 'Veggie', price: 0.0038 },
+                  { menuId: '2', description: 'Pepperoni', price: 0.0042 },
+                ],
+              },
+            ],
+          },
+        });
+      } else {
+        const orderReq = route.request().postDataJSON();
+        await route.fulfill({ json: { order: { ...orderReq, id: 23 }, jwt: 'eyJpYXQ' } });
+      }
+    });
+    await page.getByRole('link', { name: 'Login' }).click();
+    await page.getByRole('textbox', { name: 'Email address' }).fill('d@jwt.com');
+    await page.getByRole('textbox', { name: 'Password' }).fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByRole('link', { name: 'KC' })).toBeVisible();
+    await page.goto('/diner-dashboard');
+    await expect(page.getByRole('heading', { name: 'Your pizza kitchen' })).toBeVisible();
+    await expect(page.getByText('Here is your history of all the good times')).toBeVisible();
+    await expect(page.locator('tbody')).toContainText('23');
+    await expect(page.locator('tbody')).toContainText('0.008 ₿');
+  });
+
+  test('diner dashboard empty orders', async ({ page }) => {
+    await page.route('*/**/api/auth', async (route) => {
+      if (route.request().method() === 'PUT') {
+        const user = { id: '3', name: 'Kai Chen', email: 'd@jwt.com', roles: [{ role: Role.Diner }] };
+        await route.fulfill({ json: { user, token: 'abc' } });
+      }
+    });
+    await page.route('*/**/api/user/me', async (route) => {
+      await route.fulfill({ json: { id: '3', name: 'Kai Chen', email: 'd@jwt.com', roles: [{ role: Role.Diner }] } });
+    });
+    await page.route('*/**/api/order', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ json: { orders: [] } });
+      }
+    });
+    await page.goto('/');
+    await page.getByRole('link', { name: 'Login' }).click();
+    await page.getByRole('textbox', { name: 'Email address' }).fill('d@jwt.com');
+    await page.getByRole('textbox', { name: 'Password' }).fill('a');
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.getByRole('link', { name: 'KC' })).toBeVisible();
+    await page.goto('/diner-dashboard');
+    await expect(page.getByText(/How have you lived this long without having a pizza/)).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Buy one' })).toBeVisible();
+  });
