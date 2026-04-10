@@ -5,8 +5,6 @@
 
 *Targets: `https://pizza-service.saamn.dev` (Saam) and `https://pizza-service.jakenef.click` (Jake). Frontends: `https://pizza.saamn.dev`, `https://pizza.jakenef.click`.*
 
-**OWASP mapping:** Classifications below use **[OWASP Top 10:2025](https://owasp.org/Top10/2025/)** (e.g. **A01** Broken Access Control, **A07** Authentication Failures, **A02** Security Misconfiguration). Rows that are connectivity or methodology only are marked **N/A**.
-
 ---
 
 ## Self attack
@@ -19,7 +17,7 @@
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.saamn.dev` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful (no unauthorized access beyond testing a known admin email) |
 | Description | Ran `PUT /api/auth` with `{"email":"a@jwt.com","password":...}` for several candidate passwords. Wrong passwords returned **HTTP 404**; correct password `admin` returned **HTTP 200** with a JWT. The API uses **404** for failed login (`unknown user`) instead of **401**, which can aid account enumeration. |
 | Images | Terminal output from the password loop (`curl` status codes). |
@@ -31,7 +29,7 @@
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.saamn.dev` |
-| Classification | **A01:2025 – Broken Access Control** |
+| Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | Authenticated as a **diner**, called `GET /api/user` with `Authorization: Bearer <diner JWT>`. Server returned **HTTP 403**; diner could not list all users. |
 | Images | Optional — terminal showing **403** for `/api/user`. |
@@ -43,7 +41,7 @@
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.saamn.dev` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with **no** `Authorization` header returned **HTTP 401**. |
 | Images | Optional |
@@ -55,7 +53,7 @@
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.saamn.dev` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with `Authorization: Bearer not-a-real-jwt` returned **HTTP 401**. |
 | Images | Optional |
@@ -67,7 +65,7 @@
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.saamn.dev` |
-| Classification | **A01:2025 – Broken Access Control** |
+| Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | As a **diner**, sent `PUT /api/user/1` with JSON body attempting to change another user’s profile. Response **`{"message":"unauthorized"}`** with **HTTP 403**. |
 | Images | Optional — terminal showing response body and **403**. |
@@ -75,158 +73,224 @@
 
 ---
 
-### Peer 2 (Jake Nef) — attacks on own deployment
+# Self Attack
 
-*Narrative and commands merged from [jakenef/jwt-pizza-service `penTest/selfAttack.md`](https://github.com/jakenef/jwt-pizza-service/blob/main/penTest/selfAttack.md) ([`penTest` folder](https://github.com/jakenef/jwt-pizza-service/tree/main/penTest)). Put Jake’s screenshots in **this** folder next to `peerTest.md`: `unauthorizedJWTTamper.png`, `idorAttempt.png`, `franchiseDeleted.png`, `stackTrace.png`, `sqlInjection.png`.*
-
-#### Attack record 1 — JWT tampering
+## 1. JWT Tampering
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-08 |
-| Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
-| Severity | 0 — Unsuccessful |
-| Description | Tampered with the JWT payload segment while reusing header/signature; `GET /api/user/me` correctly rejected the token (unauthorized). |
-| Images | ![JWT tampering rejected](./unauthorizedJWTTamper.png) |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Date | April 8, 2026 |
+| Target | pizza-service.jakenef.click |
+| Classification | Broken Access Control |
+| Severity | 0 |
+| Description | Tried to tamper JWT token to see if auth was working. It correctly gave me unauthorized. |
+| Images | ![Unauthorized](./unauthorizedJWTTamper.png) No vulnerability found |
 | Corrections | N/A |
 
-```bash
+Commands used:
+
 BASE="https://pizza-service.jakenef.click"
 EMAIL="jakenef@byu.edu"
 PASS="password"
 
 AUTH_JSON=$(curl -sS -X PUT "$BASE/api/auth" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}")
+ -H "Content-Type: application/json" \
+ -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}")
+
+echo "$AUTH_JSON"
 
 TOKEN=$(printf '%s' "$AUTH_JSON" | jq -r '.token // empty')
+echo "TOKEN=$TOKEN"
+
 IFS='.' read -r H P S <<< "$TOKEN"
 P_TAMPERED="${P%?}A"
 TAMPERED_TOKEN="$H.$P_TAMPERED.$S"
+echo "$TAMPERED_TOKEN"
 
 curl -i -sS "$BASE/api/user/me" \
-  -H "Authorization: Bearer $TAMPERED_TOKEN"
-```
+ -H "Authorization: Bearer $TAMPERED_TOKEN"
 
-#### Attack record 2 — Access another user’s profile (IDOR-style)
+## 2. Try To Access User B Resources As User A
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-08 |
-| Target | `https://pizza-service.jakenef.click` |
-| Classification | **A01:2025 – Broken Access Control** |
-| Severity | 0 — Unsuccessful |
-| Description | Registered diners **A** and **B**, then called `PUT /api/user/<B_id>` with **A**’s JWT. Server rejected the change (unauthorized). |
-| Images | ![IDOR attempt](./idorAttempt.png) |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Date | April 8, 2026 |
+| Target | pizza-service.jakenef.click |
+| Classification | Broken Access Control |
+| Severity | 0 |
+| Description | Tried to tamper user B name while logged in as user A. It correctly gave me unauthorized. |
+| Evidence | ![Unauthorized](./idorAttempt.png) No vulnerability found |
 | Corrections | N/A |
 
-*Original notes used `pizza-service.saamn.dev` for the IDOR script; the table target above is Jake’s own API (`jakenef.click`).*
+Commands To Use:
 
-```bash
-BASE="https://pizza-service.jakenef.click"
+unset BASE TS EMAIL_A EMAIL_B PASS AUTH_A AUTH_B TOKEN_A TOKEN_B USER_A_ID USER_B_ID
+setopt NO_BANG_HIST
+
+Set variables with no risky characters
+
+BASE=https://pizza-service.saamn.dev
 TS=$(date +%s)
-EMAIL_A="idor_a_${TS}@byu.edu"
-EMAIL_B="idor_b_${TS}@byu.edu"
+EMAIL_A=idor_a_${TS}@byu.edu
+EMAIL*B=idor_b*${TS}@byu.edu
 PASS='Passw0rd123'
+printf 'BASE=%s\nA=%s\nB=%s\nPASS=%q\n' "$BASE" "$EMAIL_A" "$EMAIL_B" "$PASS"
+
+Create both users using jq-built JSON
 
 curl -sS -X POST "$BASE/api/auth" \
-  -H 'Content-Type: application/json' \
-  --data-binary "$(jq -nc --arg n 'IDOR A' --arg e "$EMAIL_A" --arg p "$PASS" '{name:$n,email:$e,password:$p}')" | jq
+ -H 'Content-Type: application/json' \
+ --data-binary "$(jq -nc --arg n 'IDOR A' --arg e "$EMAIL_A" --arg p "$PASS" '{name:$n,email:$e,password:$p}')" | jq
 
 curl -sS -X POST "$BASE/api/auth" \
-  -H 'Content-Type: application/json' \
-  --data-binary "$(jq -nc --arg n 'IDOR B' --arg e "$EMAIL_B" --arg p "$PASS" '{name:$n,email:$e,password:$p}')" | jq
+ -H 'Content-Type: application/json' \
+ --data-binary "$(jq -nc --arg n 'IDOR B' --arg e "$EMAIL_B" --arg p "$PASS" '{name:$n,email:$e,password:$p}')" | jq
+
+Login both and extract ids/tokens
 
 AUTH_A=$(curl -sS -X PUT "$BASE/api/auth" \
-  -H 'Content-Type: application/json' \
-  --data-binary "$(jq -nc --arg e "$EMAIL_A" --arg p "$PASS" '{email:$e,password:$p}')")
+ -H 'Content-Type: application/json' \
+ --data-binary "$(jq -nc --arg e "$EMAIL_A" --arg p "$PASS" '{email:$e,password:$p}')")
 
 AUTH_B=$(curl -sS -X PUT "$BASE/api/auth" \
-  -H 'Content-Type: application/json' \
-  --data-binary "$(jq -nc --arg e "$EMAIL_B" --arg p "$PASS" '{email:$e,password:$p}')")
+ -H 'Content-Type: application/json' \
+ --data-binary "$(jq -nc --arg e "$EMAIL_B" --arg p "$PASS" '{email:$e,password:$p}')")
 
 TOKEN_A=$(printf '%s' "$AUTH_A" | jq -r '.token')
+TOKEN_B=$(printf '%s' "$AUTH_B" | jq -r '.token')
+USER_A_ID=$(printf '%s' "$AUTH_A" | jq -r '.user.id')
 USER_B_ID=$(printf '%s' "$AUTH_B" | jq -r '.user.id')
 
-curl -i -sS -X PUT "$BASE/api/user/$USER_B_ID" \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $TOKEN_A" \
-  --data-binary '{"name":"HACKED_BY_A"}'
-```
+printf 'A id=%s\nB id=%s\n' "$USER_A_ID" "$USER_B_ID"
 
-#### Attack record 3 — Unauthenticated franchise deletion
+Run the IDOR attempt
+
+curl -i -sS -X PUT "$BASE/api/user/$USER_B_ID" \
+ -H 'Content-Type: application/json' \
+ -H "Authorization: Bearer $TOKEN_A" \
+ --data-binary '{"name":"HACKED_BY_A"}'
+
+## 3. Unauthorized Franchise Deletion
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-08 |
-| Target | `https://pizza-service.jakenef.click` |
-| Classification | **A01:2025 – Broken Access Control** |
-| Severity | 3 — High (if unauthenticated delete succeeds on that build) |
-| Description | `DELETE /api/franchise/:id` **without** `Authorization` succeeded on the tested code path (franchise removed). *After adding `authenticateToken` and an admin check, expect **401**/**403**.* |
-| Images | ![Franchise deleted](./franchiseDeleted.png) |
-| Corrections | Require authentication and explicit authorization on franchise delete; regression test unauthenticated `DELETE`. |
+| -------------- | -------------------------------------------------------------------------------------------------- |
+| Date | April 8, 2026 |
+| Target | pizza-service.jakenef.click |
+| Classification | Broken Access Control |
+| Severity | 3 |
+| Description | Assessed my code and tried to delete a franchise without any authorization. Attack was successful. |
+| Evidence | ![Franchise Deleted](./franchiseDeleted.png) Franchise gone. |
+| Corrections | Add authentication middleware to franchise deletion |
 
-*Partner’s raw notes used `BASE=https://pizza-service.saamn.dev` for one franchise-delete demo; self-attack target here is Jake’s service — align `BASE` with the environment you photographed.*
+Commands to run:
 
-```bash
-BASE="https://pizza-service.jakenef.click"
+Pick a target franchise id
+
+BASE="https://pizza-service.saamn.dev"
 curl -sS "$BASE/api/franchise?page=0&limit=20" | jq
+
+Save one id from the output
+
 FRANCHISE_ID=1
 
+Send delete request with no auth header
+
 curl -i -sS -X DELETE "$BASE/api/franchise/$FRANCHISE_ID"
+
+Verify result
+
 curl -sS "$BASE/api/franchise?page=0&limit=20" | jq
-```
 
-#### Attack record 4 — Exposed implementation details (stack trace)
+## 4. Exposed Implementation Details
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-08 |
-| Target | `https://pizza-service.jakenef.click` |
-| Classification | **A10:2025 – Mishandling of Exceptional Conditions** |
-| Severity | 1 — Low |
-| Description | Malformed JSON on `POST /api/auth` produced a response body leaking stack / implementation details. |
-| Images | ![Stack trace](./stackTrace.png) |
-| Corrections | Production-safe error messages; detailed errors only in server logs. |
+| -------------- | --------------------------------------------------------------------------------- |
+| Date | April 8, 2026 |
+| Target | pizza-service.jakenef.click |
+| Classification | Security Misconfiguration |
+| Severity | 1 |
+| Description | Able to see internal implementation on any general error stack from any endpoint. |
+| Evidence | ![Stack Trace](./stackTrace.png) Leaked stack trace of all internals |
+| Corrections | Make generalized errors instead of implementation specific ones |
 
-```bash
-BASE="https://pizza-service.jakenef.click"
+Commands to run:
+
+Trigger parser error with malformed JSON (no auth needed)
+
 curl -i -sS -X POST "$BASE/api/auth" \
-  -H "Content-Type: application/json" \
-  --data-binary '{"email":"x@x.com","password":"x"'
-```
+ -H "Content-Type: application/json" \
+ --data-binary '{"email":"x@x.com","password":"x"'
 
-#### Attack record 5 — SQL error from profile update (injection surface)
+Observe leaked stack in response body
+
+## 5. SQL Injection Error
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-08 |
-| Target | `https://pizza-service.jakenef.click` |
-| Classification | **A05:2025 – Injection** |
-| Severity | 2 — Medium |
-| Description | `PUT /api/user/:id` with a **name** containing a single quote triggered a SQL syntax error in the response (unsafe string building in SQL). |
-| Images | ![SQL error](./sqlInjection.png) |
-| Corrections | Parameterize all SQL; never concatenate user input into query strings. |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Date | April 8, 2026 |
+| Target | pizza-service.jakenef.click |
+| Classification | Injection |
+| Severity | 2 |
+| Description | Sent a single-quote payload in the user name field. The backend concatenated the value into SQL, causing a SQL syntax error |
+| Evidence | ![SQL Injection](./sqlInjection.png) SQL Error |
+| Corrections | Make generalized errors instead of implementation specific ones |
 
-```bash
+Commands to run:
+
+Set up a test user
+BASE="https://pizza-service.jakenef.click"
+TS=$(date +%s)
+EMAIL="sqli_${TS}@byu.edu"
+PASS="Passw0rd123"
+
+Register and log in
+
 BASE="https://pizza-service.jakenef.click"
 TS=$(date +%s)
 EMAIL="sqli_${TS}@byu.edu"
 PASS="Passw0rd123"
 
 REG=$(curl -sS -X POST "$BASE/api/auth" \
-  -H "Content-Type: application/json" \
-  --data-binary "$(jq -nc --arg n 'SQLI Test' --arg e "$EMAIL" --arg p "$PASS" '{name:$n,email:$e,password:$p}')")
+ -H "Content-Type: application/json" \
+ --data-binary "$(jq -nc --arg n 'SQLI Test' --arg e "$EMAIL" --arg p "$PASS" '{name:$n,email:$e,password:$p}')")
 
 TOKEN=$(printf '%s' "$REG" | jq -r '.token')
 USER_ID=$(printf '%s' "$REG" | jq -r '.user.id')
 
+Try normal update
+
 curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  --data-binary "$(jq -nc --arg n "x'" --arg e "$EMAIL" --arg p "$PASS" '{name:$n,email:$e,password:$p}')"
-```
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ --data-binary "$(jq -nc --arg n 'Normal Name' --arg e "$EMAIL" --arg p "$PASS" '{name:$n,email:$e,password:$p}')"
+
+If this returns 200, your token and route are working.
+
+Injection test: send a quote in the name field
+
+curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ --data-binary "$(jq -nc --arg n "x'" --arg e "$EMAIL" --arg p "$PASS" '{name:$n,email:$e,password:$p}')"
+
+What you are trying to provoke:
+
+A 500 response
+An SQL syntax error in the response
+A stack trace showing database internals
+If you want a stronger proof, try a more hostile quote payload
+curl -i -sS -X PUT "$BASE/api/user/$USER_ID"
+-H "Content-Type: application/json"
+-H "Authorization: Bearer $TOKEN"
+--data-binary '{"name":"x''' OR '''1'''='''1"}'
+
+If the app is vulnerable, it may still throw a SQL error or behave unexpectedly. In your codebase, the first quote test is already enough to prove the injection surface because it should break the SQL statement.
+
+Verify what happened
+curl -i -sS "$BASE/api/user/me"
+-H "Authorization: Bearer $TOKEN"
+
+If the update succeeded unexpectedly or the response leaked SQL syntax details, that is a valid attack finding.
 
 ---
 
@@ -240,7 +304,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful for wrong passwords; successful login only with correct secret |
 | Description | `PUT /api/auth` with `a@jwt.com` and a small password list: wrong guesses returned **404**; password `admin` returned **200**. |
 | Images | Terminal / Intruder-style output as captured during testing. |
@@ -252,7 +316,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 3 — High (authentication bypass for known email) |
 | Description | `PUT /api/auth` with `{"email":"a@jwt.com","password":""}` returned **HTTP 200** and issued a JWT, same class of issue as a falsy password skipping `bcrypt` verification in `getUser`. |
 | Images | Terminal output showing **200** for empty password. |
@@ -264,7 +328,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A01:2025 – Broken Access Control** |
+| Classification | Broken access control |
 | Severity | 2 — Medium (authorization wrong on the endpoint; no user rows returned in this environment) |
 | Description | With a **diner** JWT (registered on `https://pizza.jakenef.click`), `GET /api/user` returned **HTTP 200** and `{"users":[],"more":false}`. Follow-up: `GET` with `page=1&limit=500&name=*` and `jq` produced an empty `users` array; admin-role filter on `jq` had no matches; looping `page=1..5` with `limit=50` returned the same empty list each time. A diner should get **403** here—**200** is still a defect even when the list is empty. |
 | Images | Terminal: status **200** for `/api/user`, `jq` output, and/or pagination loop. |
@@ -276,7 +340,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` without a token returned **HTTP 401**. |
 | Images | Optional |
@@ -288,7 +352,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with `Authorization: Bearer not-a-real-jwt` returned **HTTP 401**. |
 | Images | Optional |
@@ -300,7 +364,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A01:2025 – Broken Access Control** |
+| Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | Diner `PUT /api/user/1` with JSON `{"name":"x","email":"x@test.com","password":"x"}` returned **`{"message":"unauthorized"}`** and **HTTP 403**. |
 | Images | Optional |
@@ -312,7 +376,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A01:2025 – Broken Access Control** |
+| Classification | Broken access control |
 | Severity | 0 — Unsuccessful (endpoint behaved correctly) |
 | Description | `DELETE /api/franchise/1` with **no** `Authorization` header returned **`{"message":"unauthorized"}`** and **HTTP 401**. Unauthenticated franchise wipe was not possible. |
 | Images | Optional — terminal showing **401** and JSON body. |
@@ -324,7 +388,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A07:2025 – Authentication Failures** |
+| Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful (expected success for valid session) |
 | Description | Same **diner** JWT as in attack 3: `GET /api/user/me` returned **HTTP 200** (valid token accepted for that service’s login table). |
 | Images | Optional |
@@ -336,7 +400,7 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 |------|--------|
 | Date | 2026-04-09 |
 | Target | `https://pizza-service.jakenef.click` |
-| Classification | **A02:2025 – Security Misconfiguration** (anonymous data exposure / recon) |
+| Classification | Security misconfiguration |
 | Severity | 0–1 — Unsuccessful to Low (by design in stock JWT Pizza) |
 | Description | `GET /api/franchise?page=0&limit=10&name=*` **without** authentication returned **HTTP 200** and JSON listing franchises (e.g. **Provo** id 3, **SLC** id 2) and store stubs. Useful for mapping the tenant; not a critical flaw if intentional. |
 | Images | Optional — `curl` JSON snippet. |
@@ -346,88 +410,84 @@ curl -i -sS -X PUT "$BASE/api/user/$USER_ID" \
 
 ### Peer 2 (Jake) attack on Peer 1 (Saam) — `https://pizza-service.saamn.dev`
 
-*Merged from [Jake’s `penTest/selfAttack.md` — “Peer Attack (Jake attack Saam)”](https://github.com/jakenef/jwt-pizza-service/blob/main/penTest/selfAttack.md). Reuse the same image files in this folder if they document runs against Saam’s API.*
-
-#### Attack record 1 — JWT tampering
+#### 1. JWT Tampering
 
 | Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | `https://pizza-service.saamn.dev` |
-| Classification | **A07:2025 – Authentication Failures** |
-| Severity | 0 — Unsuccessful |
-| Description | Tampered JWT; `GET /api/user/me` correctly returned unauthorized. |
-| Images | Optional (same technique as self-attack). |
-| Corrections | N/A |
-
-#### Attack record 2 — Access user B’s resources as user A (IDOR-style)
-
-| Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | `https://pizza-service.saamn.dev` |
-| Classification | **A01:2025 – Broken Access Control** |
-| Severity | 0 — Unsuccessful |
-| Description | Attempted to change user **B**’s profile while authenticated as **A**; server rejected (no vulnerability found). |
-| Images | Optional |
-| Corrections | N/A |
-
-#### Attack record 3 — Unauthenticated franchise deletion
-
-| Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | `https://pizza-service.saamn.dev` |
-| Classification | **A01:2025 – Broken Access Control** |
-| Severity | 3 — High (per partner reproduction: unauthenticated delete succeeded before Saam’s middleware fix) |
-| Description | `DELETE /api/franchise/:id` without auth succeeded on the tested build (franchise removed). *If Saam’s deployed service now returns **401**/**403**, note that in class as remediation verified.* |
-| Images | ![Franchise deleted](./franchiseDeleted.png) |
-| Corrections | Add `authenticateToken` + role check on franchise delete (Saam implemented this in `franchiseRouter.js`). |
-
-#### Attack record 4 — Exposed implementation details (stack trace)
-
-| Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | `https://pizza-service.saamn.dev` |
-| Classification | **A10:2025 – Mishandling of Exceptional Conditions** |
-| Severity | 1 — Low |
-| Description | Error responses exposed stack / implementation details (e.g. malformed JSON on auth). |
-| Images | ![Stack trace](./stackTrace.png) |
-| Corrections | Generic client errors in production; log internals server-side only. |
-
-#### Attack record 5 — SQL error from profile update (injection surface)
-
-| Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | `https://pizza-service.saamn.dev` |
-| Classification | **A05:2025 – Injection** |
-| Severity | 2 — Medium |
-| Description | Single-quote payload in **name** on `PUT /api/user/:id` produced SQL syntax error in response (unsafe query construction). |
-| Images | ![SQL error](./sqlInjection.png) |
-| Corrections | Parameterize SQL for `updateUser`; sanitize error responses. |
-
-#### Supplement — Operator notes (Saam / Jake session)
-
-| Item | Result |
-|------|--------|
-| Date | 2026-04-09 |
-| Target | Mixed |
-| Classification | **N/A** |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| Date | April 9, 2026 |
+| Target | pizza-service.saamn.dev |
+| Classification | Broken Access Control |
 | Severity | 0 |
-| Description | Typo `https://pizza-service.jake.click` produced **`curl` HTTP code `000`** (no TCP/TLS response). On `pizza-service.jakenef.click`, missing or wrong-environment JWTs yielded **401** on `/api/user/me` until a fresh token was issued from the correct frontend. |
-| Images | Optional |
+| Description | Tried to tamper JWT token to see if auth was working. It correctly gave me unauthorized. |
 | Corrections | N/A |
+
+#### 2. Try To Access User B Resources As User A
+
+| Item | Result |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Date | April 9, 2026 |
+| Target | pizza-service.saamn.dev |
+| Classification | Broken Access Control |
+| Severity | 0 |
+| Description | Tried to tamper user B name while logged in as user A. It correctly gave me unauthorized. |
+| Evidence | No vulnerability found |
+| Corrections | N/A |
+
+#### 3. Unauthorized Franchise Deletion
+
+| Item | Result |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Date | April 9, 2026 |
+| Target | pizza-service.saamn.dev |
+| Classification | Broken Access Control |
+| Severity | 3 |
+| Description | Knew this one failed on my code so I tried to delete a franchise without any authorization. Attack was successful. |
+| Evidence | ![Franchise Deleted](./franchiseDeleted.png) Franchise gone. |
+| Corrections | Add authentication middleware to franchise deletion |
+
+#### 4. Exposed Implementation Details
+
+| Item | Result |
+| -------------- | --------------------------------------------------------------------------------- |
+| Date | April 9, 2026 |
+| Target | pizza-service.saamn.dev |
+| Classification | Security Misconfiguration |
+| Severity | 1 |
+| Description | Able to see internal implementation on any general error stack from any endpoint. |
+| Evidence | ![Stack Trace](./stackTrace.png) Leaked stack trace of all internals |
+| Corrections | Make generalized errors instead of implementation specific ones |
+
+#### 5. SQL Injection Error
+
+| Item | Result |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Date | April 9, 2026 |
+| Target | pizza-service.saamn.dev |
+| Classification | Injection |
+| Severity | 2 |
+| Description | Sent a single-quote payload in the user name field. The backend concatenated the value into SQL, causing a SQL syntax error |
+| Evidence | ![SQL Injection](./sqlInjection.png) SQL Error |
+| Corrections | Make generalized errors instead of implementation specific ones |
 
 ---
 
 ## Combined summary of learnings
 
-We compared two deployments with **[OWASP Top 10:2025](https://owasp.org/Top10/2025/)** labels (**A01**, **A05**, **A07**, **A10**, **A02** where relevant). **JWT tampering** and **IDOR-style profile updates** were generally blocked when tokens were invalid or users lacked ownership—good **A07** / **A01** baselines. The heavier findings were **authorization gaps on `DELETE /api/franchise`**, **SQL built from string concatenation** (quote in **name** → syntax error — **A05**), and **verbose errors** (stack / SQL text to clients — **A10** / **A05**). Saam’s probes against Jake also surfaced **A01**/**A07** issues (diner `GET /api/user` **200**, empty-password login). Jake’s [penTest/selfAttack.md](https://github.com/jakenef/jwt-pizza-service/blob/main/penTest/selfAttack.md) emphasizes defense in depth: authn ≠ authz; default-deny on destructive operations; parameterized queries; generic client errors with server-only logs. Priorities: middleware + roles on **DELETE**, fix `updateUser` SQL, centralize error handling, regression tests. Operationally, a wrong hostname (`jake.click` vs `jakenef.click`) yielded **`curl` `000`**—copy API URLs from the deployed bundle or env. Optional: login rate limits and **401** vs **404** on failed login to reduce enumeration.
+Across both self and peer testing, authentication checks for JWT tampering and user-to-user profile updates held up as expected, which is a positive baseline for identity controls. The most important weaknesses were authorization gaps on destructive endpoints, unsafe error handling, and SQL query construction that accepted untrusted input.
 
----
+Primary learnings:
 
-## Peer collaboration (Pizza Factory)
+- Authentication alone is not enough. Every sensitive route still needs explicit authorization checks tied to role/ownership.
+- Destructive operations must default to deny. The franchise deletion issue shows that one missing middleware check can cause high-impact data loss.
+- Error responses should be sanitized. Returning stack traces and SQL errors leaks internals that make follow-up attacks easier.
+- Database access must be parameterized. String-concatenated SQL created an injection surface from a simple single-quote payload.
+- Repeatable attack scripts improve confidence. Using reproducible curl/jq flows made it easy to validate findings and compare behavior across targets.
 
-After completing this report, both peers log into the [Pizza Factory](https://pizza-factory.cs329.click) penetration-testing flow and submit a star rating for the partner per course instructions (coordination, site availability, mutual testing effort, and hardening).
+Remediation priority (highest to lowest):
+
+1. Enforce authz middleware on all mutating/destructive endpoints (especially DELETE).
+2. Replace dynamic SQL concatenation with parameterized queries everywhere.
+3. Centralize production-safe error handling (generic client message, detailed server logs only).
+4. Add regression tests for unauthorized delete, injection payload handling, and stack-trace suppression.
+
+Overall takeaway: core token validation worked, but defense-in-depth failed at authorization boundaries, query safety, and error hygiene. Closing those three areas will remove the current critical attack paths.
