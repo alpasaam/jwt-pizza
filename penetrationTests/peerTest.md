@@ -20,7 +20,7 @@
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful (no unauthorized access beyond testing a known admin email) |
 | Description | Ran `PUT /api/auth` with `{"email":"a@jwt.com","password":...}` for several candidate passwords. Wrong passwords returned **HTTP 404**; correct password `admin` returned **HTTP 200** with a JWT. The API uses **404** for failed login (`unknown user`) instead of **401**, which can aid account enumeration. |
-| Images | Terminal output from the password loop (`curl` status codes). |
+| Images | ![Saam Naeini — self attack 1](./saam-naeini-self-attack-1.png) Terminal: password loop / `curl` status codes. |
 | Corrections | N/A for this test. Optional: return **401** for invalid credentials and add login rate limiting. |
 
 #### Attack record 2 — Diner access to admin user list
@@ -32,7 +32,7 @@
 | Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | Authenticated as a **diner**, called `GET /api/user` with `Authorization: Bearer <diner JWT>`. Server returned **HTTP 403**; diner could not list all users. |
-| Images | Optional — terminal showing **403** for `/api/user`. |
+| Images | ![Saam Naeini — self attack 2](./saam-naeini-self-attack-2.png) Terminal: **403** on `GET /api/user` as diner. |
 | Corrections | N/A |
 
 #### Attack record 3 — Unauthenticated access to `/api/user/me`
@@ -44,7 +44,7 @@
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with **no** `Authorization` header returned **HTTP 401**. |
-| Images | Optional |
+| Images | ![Saam Naeini — self attack 3](./saam-naeini-self-attack-3.png) Terminal: **401** without `Authorization`. |
 | Corrections | N/A |
 
 #### Attack record 4 — Invalid Bearer token
@@ -56,7 +56,7 @@
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with `Authorization: Bearer not-a-real-jwt` returned **HTTP 401**. |
-| Images | Optional |
+| Images | ![Saam Naeini — self attack 4](./saam-naeini-self-attack-4.png) Terminal: **401** with invalid Bearer. |
 | Corrections | N/A |
 
 #### Attack record 5 — Horizontal access control (update another user)
@@ -68,7 +68,7 @@
 | Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | As a **diner**, sent `PUT /api/user/1` with JSON body attempting to change another user’s profile. Response **`{"message":"unauthorized"}`** with **HTTP 403**. |
-| Images | Optional — terminal showing response body and **403**. |
+| Images | ![Saam Naeini — self attack 5](./saam-naeini-self-attack-5.png) Terminal: **403** and `{"message":"unauthorized"}`. |
 | Corrections | N/A |
 
 ---
@@ -307,7 +307,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful for wrong passwords; successful login only with correct secret |
 | Description | `PUT /api/auth` with `a@jwt.com` and a small password list: wrong guesses returned **404**; password `admin` returned **200**. |
-| Images | Terminal / Intruder-style output as captured during testing. |
 | Corrections | Same as enumeration note above; rate limiting recommended. |
 
 #### Attack record 2 — Empty password login bypass
@@ -319,7 +318,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Identification and authentication failures |
 | Severity | 3 — High (authentication bypass for known email) |
 | Description | `PUT /api/auth` with `{"email":"a@jwt.com","password":""}` returned **HTTP 200** and issued a JWT, same class of issue as a falsy password skipping `bcrypt` verification in `getUser`. |
-| Images | Terminal output showing **200** for empty password. |
 | Corrections | Require non-empty password on login; always run `bcrypt.compare` for login; redeploy service. |
 
 #### Attack record 3 — Diner calls admin user list
@@ -331,7 +329,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Broken access control |
 | Severity | 2 — Medium (authorization wrong on the endpoint; no user rows returned in this environment) |
 | Description | With a **diner** JWT (registered on `https://pizza.jakenef.click`), `GET /api/user` returned **HTTP 200** and `{"users":[],"more":false}`. Follow-up: `GET` with `page=1&limit=500&name=*` and `jq` produced an empty `users` array; admin-role filter on `jq` had no matches; looping `page=1..5` with `limit=50` returned the same empty list each time. A diner should get **403** here—**200** is still a defect even when the list is empty. |
-| Images | Terminal: status **200** for `/api/user`, `jq` output, and/or pagination loop. |
 | Corrections | Enforce `Role.Admin` on `GET /api/user` before listing; add automated test with a diner token expecting **403**. |
 
 #### Attack record 4 — Unauthenticated `/api/user/me`
@@ -343,7 +340,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` without a token returned **HTTP 401**. |
-| Images | Optional |
 | Corrections | N/A |
 
 #### Attack record 5 — Invalid Bearer token
@@ -355,7 +351,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful |
 | Description | `GET /api/user/me` with `Authorization: Bearer not-a-real-jwt` returned **HTTP 401**. |
-| Images | Optional |
 | Corrections | N/A |
 
 #### Attack record 6 — Diner `PUT` another user
@@ -367,7 +362,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Broken access control |
 | Severity | 0 — Unsuccessful |
 | Description | Diner `PUT /api/user/1` with JSON `{"name":"x","email":"x@test.com","password":"x"}` returned **`{"message":"unauthorized"}`** and **HTTP 403**. |
-| Images | Optional |
 | Corrections | N/A |
 
 #### Attack record 7 — Unauthenticated franchise deletion
@@ -379,7 +373,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Broken access control |
 | Severity | 0 — Unsuccessful (endpoint behaved correctly) |
 | Description | `DELETE /api/franchise/1` with **no** `Authorization` header returned **`{"message":"unauthorized"}`** and **HTTP 401**. Unauthenticated franchise wipe was not possible. |
-| Images | Optional — terminal showing **401** and JSON body. |
 | Corrections | N/A |
 
 #### Attack record 8 — Authenticated diner `GET /api/user/me`
@@ -391,7 +384,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Identification and authentication failures |
 | Severity | 0 — Unsuccessful (expected success for valid session) |
 | Description | Same **diner** JWT as in attack 3: `GET /api/user/me` returned **HTTP 200** (valid token accepted for that service’s login table). |
-| Images | Optional |
 | Corrections | N/A |
 
 #### Attack record 9 — Public franchise listing (recon)
@@ -403,7 +395,6 @@ If the update succeeded unexpectedly or the response leaked SQL syntax details, 
 | Classification | Security misconfiguration |
 | Severity | 0–1 — Unsuccessful to Low (by design in stock JWT Pizza) |
 | Description | `GET /api/franchise?page=0&limit=10&name=*` **without** authentication returned **HTTP 200** and JSON listing franchises (e.g. **Provo** id 3, **SLC** id 2) and store stubs. Useful for mapping the tenant; not a critical flaw if intentional. |
-| Images | Optional — `curl` JSON snippet. |
 | Corrections | N/A unless product should hide franchise names from anonymous clients. |
 
 ---
